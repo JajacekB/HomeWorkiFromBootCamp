@@ -541,11 +541,10 @@ def rent_vehicle(user: User, session=None):
         f"od {start_date} do {planned_return_date}.\nMiłej jazdy!"
     )
 
-def return_vehicle():
-
-    # user = get_users_by_role()
+def return_vehicle(user: User):
     # Pobieranie aktywnie wynajętych i zarejestrowanych pojazdów
     with Session() as session:
+        # user = get_users_by_role(session, user)
 
         unavailable_veh = session.query(Vehicle).filter(Vehicle.is_available != True).all()
         unavailable_veh_ids = [v.id for v in unavailable_veh]
@@ -597,7 +596,7 @@ def return_vehicle():
 
             print(
                 f"|{p.id:>4} |{date_str:>21} |{p.brand:>15} |{p.vehicle_model:>15} | {p.individual_id:>24} |"
-            )  # po wyczyszczeniu tabeli vehicles z braku dat zmienić na vehicle
+            )
 
         # Wybór pojazdu do zwrotu i potwierdzenie chęci anulowania wynajmu lub rezerwacji
         choice = get_positive_int(
@@ -620,7 +619,7 @@ def return_vehicle():
 
         elif choice in ("tak", "t", "yes", "y"):
             actual_return_date_input = get_return_date_from_user(session)
-            new_cost = recalculate_cost(session, vehicle, actual_return_date_input)
+            new_cost = recalculate_cost(session, user, vehicle, actual_return_date_input)
 
 def repair_vehicle():
     with SessionLocal() as session:

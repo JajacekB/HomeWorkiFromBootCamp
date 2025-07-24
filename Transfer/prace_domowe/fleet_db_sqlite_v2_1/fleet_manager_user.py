@@ -1,13 +1,15 @@
-from fleet_validation import (get_valid_phone, get_valid_email, is_valid_phone, is_valid_email,
-                            validate_and_change_password, is_valid_password_format, is_valid_email_format)
+from fleet_validation import (
+    get_valid_phone, get_valid_email, is_valid_phone, is_valid_email,
+    validate_and_change_password, is_valid_password_format, is_valid_email_format)
 from fleet_models_db import User, Vehicle
 from fleet_database import Session
 from sqlalchemy.exc import NoResultFound, IntegrityError
 from sqlalchemy import or_, not_
+from typing import List
 import bcrypt
 import getpass
 
-def get_users_by_role(session, role_name: str):
+def get_users_by_role(session, role_name: str) -> List[User]:
     """Zwraca listę użytkowników o podanej roli."""
     return session.query(User).filter_by(role=role_name).all()
 
@@ -28,7 +30,7 @@ def login_user():
                 print("\nBłędne hasło.")
             else:
                 print(f"\nZalogowano jako {user.first_name} {user.last_name} ({user.role})")
-                return user  # Wylogowanie = powrót None albo exit
+                return user  #
 
         print(f"\nCo chcesz zrobić?\n"
                 f"1. Spróbować jeszcze raz.\n"
