@@ -139,12 +139,96 @@ def calculate_rental_cost(user, daily_rate, rental_days):
             "lojalność" if loyalty_discount_days else (
             "czasowy" if discount > 0 else "brak"))
 
+def recalculate_cost(session, vehicle: Vehicle, return_date: date):
+    # Rozdzielenie przypadków; przed czasem, aktualny, przeterminowany
+
+    planned_return_date = session.query(RentalHistory.planned_return_date).filter(
+        RentalHistory.vehicle_id == vehicle.id
+    ).order_by(RentalHistory.planned_return_date.desc()).scalar()
+
+    start_date = session.query(RentalHistory.start_date).filter(
+        RentalHistory.vehicle_id == vehicle.id
+    ).order_by(RentalHistory.planned_return_date.desc()).scalar()
+
+    base_cost = session.query(RentalHistory.base_cost).filter(RentalHistory.vehicle_id == vehicle.id).scalar()
+    cash_per_day = session.query(Vehicle.cash_per_day).filter(Vehicle.id == vehicle.id).scalar()
+
+    user = session.query(RentalHistory.user_id).filter(RentalHistory.vehicle_id == vehicle.id).first()
+
+    if return_date > planned_return_date:
+        extra_days = (return_date - planned_return_date).days
+        total_cost = base_cost + extra_days * cash_per_day
+        overdue_fee_text = f"\n{base_cost} zł opłata bazowa + {extra_days * cash_per_day} zł kara za przeterminowanie.)"
+    elif return_date == planned_return_date:
+        total_cost = base_cost
+        overdue_fee_text = " (zwrot terminowy)"
+    else:
+        new_period = (planned_return_date - start_date).days
+        total_cost = calculate_rental_cost(user, cash_per_day, new_period)
+        overdue_fee_text = " (zwrot przed terminem, naliczono koszt zgodnie z czasem użytkowania)"
+
+    print(
+        f"\n💸 — KKW (Rzeczywisty Koszt Wynajmu) wynosi: {total_cost} zł.{overdue_fee_text}"
+    )
+    print(
+        f"\nCzy na pewno chcesz zwrócić pojazd: "
+        f"\n{vehicle}"
+    )
+    choice = input(
+        f"Wybierz (tak/nie): "
+    ).strip().lower()
+
+    if choice in ("nie", "n", "no"):
+        print("\nZwrot pojazdu anulowany.")
+        return
+
+    elif choice in ("tak", "t", "yes", "y"):
+        update_database(session, vehicle, return_date, total_cost)
+
+def update_database(session, vehicle: Vehicle, return_date: date, total_cost: float):
+
+    vehicle.is_available = True
+    vehicle.borrower_id = None
+    vehicle.return_date = None
+
+    rental = RentalHistory(
+        actual_return_date=return_date,
+        total_cost=total_cost
+    )
+
+    invoice = Invoice(
+        amount=total_cost
+    )
+
+    session.add_all([vehicle, rental, invoice])
+    session.commit()
+    return
+
+def get_return_date_from_user(session) -> date:
+    while True:
+        return_date_input_str = input(
+            f"Podaj rzeczywistą datę zwrotu (DD-MM-YYYY) Enter = dziś: "
+        ).strip().lower()
+
+        try:
+
+            if return_date_input_str:
+                return_date_input = datetime.strptime(return_date_input_str, "%d-%m-%Y").date()
+            else:
+                return_date_input = date.today()
+            break
+
+        except ValueError:
+            print("❌ Niepoprawny format daty.")
+            continue
+    return return_date_input
+
 def get_unavailable_vehicle(session, start_date = None, planned_return_date = None, vehicle_type = "all"):
     today = date.today()
     if start_date is None or planned_return_date is None:
         start_date = planned_return_date = date.today()
 
-    query = session.query(Vehicle).filter(Vehicle.is_available != True).all()
+    query = session.query(Vehicle).filter(Vehicle.is_available != True)
 
     if vehicle_type != "all":
         query = query.filter(Vehicle.type == vehicle_type)
