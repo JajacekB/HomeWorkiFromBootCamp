@@ -30,7 +30,7 @@ def login_user():
                 print("\nBłędne hasło.")
             else:
                 print(f"\nZalogowano jako {user.first_name} {user.last_name} ({user.role})")
-                return user  #
+                return user
 
         print(f"\nCo chcesz zrobić?\n"
                 f"1. Spróbować jeszcze raz.\n"

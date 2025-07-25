@@ -139,70 +139,64 @@ def calculate_rental_cost(user, daily_rate, rental_days):
             "lojalność" if loyalty_discount_days else (
             "czasowy" if discount > 0 else "brak"))
 
-def recalculate_cost(session, vehicle: Vehicle, return_date: date):
+def recalculate_cost(session, user: User, vehicle: Vehicle, return_date: date, reservation_id: str):
     # Rozdzielenie przypadków; przed czasem, aktualny, przeterminowany
 
-    planned_return_date = session.query(RentalHistory.planned_return_date).filter(
-        RentalHistory.vehicle_id == vehicle.id
-    ).order_by(RentalHistory.planned_return_date.desc()).scalar()
+    rental_looked = session.query(RentalHistory).filter(
+        RentalHistory.reservation_id == reservation_id
+    ).first()
 
-    start_date = session.query(RentalHistory.start_date).filter(
-        RentalHistory.vehicle_id == vehicle.id
-    ).order_by(RentalHistory.planned_return_date.desc()).scalar()
+    if not rental_looked:
+        raise ValueError("Nie znaleziono rezerwacji o podanym ID")
 
-    base_cost = session.query(RentalHistory.base_cost).filter(RentalHistory.vehicle_id == vehicle.id).scalar()
-    cash_per_day = session.query(Vehicle.cash_per_day).filter(Vehicle.id == vehicle.id).scalar()
+    planned_return_date_cal = rental_looked.planned_return_date
+    start_date_cal = rental_looked.start_date
+    base_cost_cal = rental_looked.base_cost
 
-    user = session.query(RentalHistory.user_id).filter(RentalHistory.vehicle_id == vehicle.id).first()
+    cash_per_day_cal = session.query(Vehicle.cash_per_day).filter(Vehicle.id == vehicle.id).scalar()
 
-    if return_date > planned_return_date:
-        extra_days = (return_date - planned_return_date).days
-        total_cost = base_cost + extra_days * cash_per_day
-        overdue_fee_text = f"\n{base_cost} zł opłata bazowa + {extra_days * cash_per_day} zł kara za przeterminowanie.)"
-    elif return_date == planned_return_date:
-        total_cost = base_cost
+    if return_date > planned_return_date_cal:
+        extra_days = (return_date - planned_return_date_cal).days
+        total_cost = base_cost_cal + extra_days * cash_per_day_cal
+        overdue_fee_text = f"\n{base_cost_cal} zł opłata bazowa + {extra_days * cash_per_day_cal} zł kara za przeterminowanie.)"
+    elif return_date == planned_return_date_cal:
+        total_cost = base_cost_cal
         overdue_fee_text = " (zwrot terminowy)"
     else:
-        new_period = (planned_return_date - start_date).days
-        total_cost = calculate_rental_cost(user, cash_per_day, new_period)
+        new_period = (planned_return_date_cal - start_date_cal).days
+        total_cost = calculate_rental_cost(user, cash_per_day_cal, new_period)
         overdue_fee_text = " (zwrot przed terminem, naliczono koszt zgodnie z czasem użytkowania)"
 
-    print(
-        f"\n💸 — KKW (Rzeczywisty Koszt Wynajmu) wynosi: {total_cost} zł.{overdue_fee_text}"
-    )
-    print(
-        f"\nCzy na pewno chcesz zwrócić pojazd: "
-        f"\n{vehicle}"
-    )
-    choice = input(
-        f"Wybierz (tak/nie): "
-    ).strip().lower()
+        return total_cost, overdue_fee_text
 
-    if choice in ("nie", "n", "no"):
-        print("\nZwrot pojazdu anulowany.")
+
+def update_database(session, vehicle: Vehicle, return_date: date, total_cost: float, reservation_id: str):
+
+    rental = session.query(RentalHistory).filter(RentalHistory.reservation_id == reservation_id).first()
+
+    if not rental:
+        print("Nie ma wypozycznie o podanym numerze id.")
         return
 
-    elif choice in ("tak", "t", "yes", "y"):
-        update_database(session, vehicle, return_date, total_cost)
+    rental_id = rental.id
 
-def update_database(session, vehicle: Vehicle, return_date: date, total_cost: float):
+    invoice = session.query(Invoice).filter(Invoice.rental_id == rental_id).first()
+
+    if not invoice:
+        print("Nie ma faktury o podanym numerze id.")
 
     vehicle.is_available = True
     vehicle.borrower_id = None
     vehicle.return_date = None
 
-    rental = RentalHistory(
-        actual_return_date=return_date,
-        total_cost=total_cost
-    )
+    rental.actual_return_date = return_date
+    rental.total_cost=total_cost
 
-    invoice = Invoice(
-        amount=total_cost
-    )
+    invoice.amount=total_cost
 
     session.add_all([vehicle, rental, invoice])
     session.commit()
-    return
+    return True
 
 def get_return_date_from_user(session) -> date:
     while True:

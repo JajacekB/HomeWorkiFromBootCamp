@@ -41,12 +41,11 @@ class Car(Vehicle):
 
     def __repr__(self):
         return(
-            f"\nid: [{self.id}]\n"
-            f"Numer ewidencyjny: [{self.vehicle_id}]\n"
-            f"{self.brand}, {self.vehicle_model}\n"
-            f"{self.size}, {self.fuel_type}\n"
-            f"Numer rejestracyjny: {self.individual_id}\n"
-            f"{self.cash_per_day}zł za dzień\n"
+            f"\nNumer ewidencyjny: [{self.vehicle_id} ]"
+            f"{self.brand} {self.vehicle_model} "
+            f"{self.size} - {self.fuel_type}\n"
+            f"Numer rejestracyjny: {self.individual_id}"
+            f"{self.cash_per_day}zł za dzień"
             f"{'Dostępny' if self.is_available else f'Niedostępny do {self.return_date}'}\n"
         )
 
@@ -62,12 +61,11 @@ class Scooter(Vehicle):
 
     def __repr__(self):
         return (
-            f"\nid: [{self.id}]\n"
-            f"Numer ewidencyjny: [{self.vehicle_id}]\n"
-            f"{self.brand}, {self.vehicle_model}\n"
+            f"Numer ewidencyjny: [{self.vehicle_id} ] "
+            f"{self.brand} {self.vehicle_model} "
             f"Maks. prędkość: {self.max_speed}km/h\n"
-            f"Numer rejestracyjny: {self.individual_id}\n"
-            f"{self.cash_per_day}zł za dzień\n"
+            f"Numer rejestracyjny: {self.individual_id} "
+            f"{self.cash_per_day}zł za dzień "
             f"{'Dostępny' if self.is_available else f'Niedostępny do {self.return_date}'}\n"
         )
 
@@ -84,12 +82,11 @@ class Bike(Vehicle):
 
     def __repr__(self):
         return (
-            f"\nid: [{self.id}]\n"
-            f"Numer ewidencyjny: [{self.vehicle_id}]\n"
-            f"{self.brand}, {self.vehicle_model}\n"
-            f"{self.bike_type}, {'elektryczny' if self.is_electric else 'zwykły'}\n"
-            f"Numer seryjny: {self.individual_id}\n"
-            f"{self.cash_per_day}zł za dzień\n"
+            f"Numer ewidencyjny: [{self.vehicle_id}] "
+            f"{self.brand} {self.vehicle_model} "
+            f"{self.bike_type} - {'elektryczny' if self.is_electric else 'zwykły'}\n"
+            f"Numer seryjny: {self.individual_id} "
+            f"{self.cash_per_day}zł za dzień "
             f"{'Dostępny' if self.is_available else f'Niedostępny do {self.return_date}'}\n"
         )
 
@@ -140,7 +137,7 @@ class RentalHistory(Base):
     invoice = relationship("Invoice", back_populates="rental", uselist=False)
 
     def __repr__(self):
-        return f"<RentalHistory {self.reservation_id} User:{self.user_id} Vehicle:{self.vehicle_id}>"
+        return f"<RentalHistory ID:{self.id} Nr rezerwacji:{self.reservation_id} User:{self.user_id} Vehicle:{self.vehicle_id}>"
 
 
 class RepairHistory(Base):
@@ -178,7 +175,7 @@ class Invoice(Base):
     rental = relationship("RentalHistory", back_populates="invoice")
 
     def __repr__(self):
-        return f"<Invoice {self.invoice_number} Amount:{self.amount}>"
+        return f"<Invoice {self.id} {self.rental_id} {self.invoice_number} Amount:{self.amount}>"
 
 class Promotion(Base):
     __tablename__ = "promotions"

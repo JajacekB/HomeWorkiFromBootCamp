@@ -1,5 +1,6 @@
 from fleet_models_db import Vehicle, Car, Scooter, Bike, User, RentalHistory, Invoice, RepairHistory
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func
 from fleet_database import Session, SessionLocal
 from datetime import date, datetime, timedelta
 from collections import defaultdict
@@ -8,7 +9,8 @@ from fleet_utils_db import (
     get_positive_int, get_positive_float,generate_repair_id,
     generate_vehicle_id, generate_reservation_id, generate_invoice_number,
     calculate_rental_cost, get_available_vehicles, get_unavailable_vehicle,
-    show_vehicles_rented_today, recalculate_cost, get_return_date_from_user
+    update_database, recalculate_cost, get_return_date_from_user,
+    show_vehicles_rented_today
 )
 
 def add_vehicles_batch():
@@ -282,10 +284,10 @@ def get_vehicle(only_available: bool = False):
         vehicles = []
 
         if status == "available":
-            vehicles = get_available_vehicles(session, vehicle_type)
+            vehicles = get_available_vehicles(session, vehicle_type=vehicle_type)
 
         elif status == "rented":
-            unavailable_ids = get_unavailable_vehicle(session, vehicle_type)
+            unavailable_ids = get_unavailable_vehicle(session, vehicle_type=vehicle_type)
             if not unavailable_ids:
                 print("\n🚫 Brak niedostępnych pojazdów na dziś.")
                 return
@@ -477,10 +479,33 @@ def rent_vehicle(user: User, session=None):
     # Krok 3: Wybór modelu
     while True:
         chosen_model = input("\nPodaj model pojazdu do wypożyczenia: ").strip()
-        chosen_vehicle = next(
-            (v for v in available_vehicles if v.vehicle_model.lower() == chosen_model.lower()),
-            None
-        )
+        matching_vehicles = [v for v in available_vehicles if v.vehicle_model.lower() == chosen_model.lower()]
+
+        if not matching_vehicles:
+            print("🚫 Nie znaleziono pojazdu o podanym modelu. Wybierz ponownie.")
+            continue
+
+        # Szukaj najmniej wypożyczanego w bazie
+
+        # Lista ID dostępnych pojazdów danego modelu
+        matching_ids = [v.id for v in matching_vehicles]
+
+        result = session.query(
+            Vehicle,
+            func.count(RentalHistory.id).label("rental_count")
+        ).outerjoin(RentalHistory).filter(
+            Vehicle.id.in_(matching_ids)
+        ).group_by(Vehicle.id).order_by("rental_count").first()
+
+        if result:
+            chosen_vehicle, rental_count = result
+        else:
+            # fallback — pierwszy dostępny z listy
+            chosen_vehicle = matching_vehicles[0]
+            rental_count = 0
+        print(
+            f"\n✅ Wybrano pojazd: {chosen_vehicle.brand} {chosen_vehicle.vehicle_model}"
+            f" (ID: {chosen_vehicle.id}) — wypożyczany {rental_count or 0} razy.")
 
         if not chosen_vehicle:
             print("🚫 Nie znaleziono pojazdu o podanym modelu. Wybierz ponownie.")
@@ -524,16 +549,18 @@ def rent_vehicle(user: User, session=None):
         base_cost=base_cost,
         total_cost=total_cost
     )
+    session.add(rental)
+    session.flush()
 
     # Faktura
     invoice = Invoice(
         invoice_number=invoice_number,
-        rental_id=reservation_id,
+        rental_id=rental.id,
         amount=total_cost,
         issue_date=planned_return_date
     )
 
-    session.add_all([rental, invoice])
+    session.add_all([invoice])
     session.commit()
 
     print(
@@ -541,26 +568,41 @@ def rent_vehicle(user: User, session=None):
         f"od {start_date} do {planned_return_date}.\nMiłej jazdy!"
     )
 
-def return_vehicle(user: User):
+def return_vehicle(user):
     # Pobieranie aktywnie wynajętych i zarejestrowanych pojazdów
     with Session() as session:
-        # user = get_users_by_role(session, user)
 
-        unavailable_veh = session.query(Vehicle).filter(Vehicle.is_available != True).all()
-        unavailable_veh_ids = [v.id for v in unavailable_veh]
+        if user.role == "client":
 
-        if not unavailable_veh:
-            print("\nBrak wynajętych pojazdów")
-            return
+            rented_vehs = session.query(RentalHistory).filter(
+                RentalHistory.user_id == user.id,
+                RentalHistory.actual_return_date.is_(None)
+            ).all()
 
-        # lista wynajętych pojazdów
-        rented_vehs = session.query(RentalHistory).filter(
-            RentalHistory.vehicle_id.in_(unavailable_veh_ids)
-        ).order_by(RentalHistory.planned_return_date.asc()).all()
+            vehicles = session.query(Vehicle).filter(Vehicle.borrower_id == user.id).order_by(
+                Vehicle.return_date.asc()).all()
 
-        rented_ids = [r.vehicle_id for r in rented_vehs]
+            print(type(vehicles))
 
-        vehicles = session.query(Vehicle).filter(Vehicle.id.in_(rented_ids)).order_by(Vehicle.return_date).all()
+        else:
+            print("Lipa")
+            unavailable_veh = session.query(Vehicle).filter(Vehicle.is_available != True).all()
+            unavailable_veh_ids = [v.id for v in unavailable_veh]
+
+            if not unavailable_veh:
+                print("\nBrak wynajętych pojazdów")
+                return
+
+            # lista wynajętych pojazdów
+            rented_vehs = session.query(RentalHistory).filter(
+                RentalHistory.vehicle_id.in_(unavailable_veh_ids),
+                RentalHistory.actual_return_date.is_(None)
+            ).order_by(RentalHistory.planned_return_date.asc()).all()
+
+            reservation_ids = [i.reservation_id for i in rented_vehs]
+            rented_ids = [r.vehicle_id for r in rented_vehs]
+
+            vehicles = session.query(Vehicle).filter(Vehicle.id.in_(rented_ids)).order_by(Vehicle.return_date).all()
 
         table_wide = 91
         month_pl = {
@@ -579,8 +621,6 @@ def return_vehicle(user: User):
         }
 
         veh_ids = [z.id for z in vehicles]
-        print(f"\n[DEBUG] baza vehicles: {veh_ids}")
-        print(f"\n[DEBUG] rented_ids: {rented_ids}")
 
         print(f"\nLista wynajętych pojazdów:\n")
         print(
@@ -609,19 +649,61 @@ def return_vehicle(user: User):
             f"\nCzy na pewno chcesz zwrócić pojazd: "
             f"\n{vehicle}"
         )
-        choice = input(
-            f"Wybierz (tak/nie): "
-        ).strip().lower()
+        while True:
+            choice = input(
+                f"Wybierz (tak/nie): "
+            ).strip().lower()
 
-        if choice in ("nie", "n", "no"):
-            print("\nZwrot pojazdu anulowany.")
-            return
+            if choice in ("nie", "n", "no"):
+                print("\nZwrot pojazdu anulowany.")
+                return
 
-        elif choice in ("tak", "t", "yes", "y"):
-            actual_return_date_input = get_return_date_from_user(session)
-            new_cost = recalculate_cost(session, user, vehicle, actual_return_date_input)
+            elif choice in ("tak", "t", "yes", "y"):
 
-def repair_vehicle():
+                actual_return_date_input = get_return_date_from_user(session)
+
+                # Znajdź odpowiednią rezerwację (reservation_id) dla wybranego pojazdu i użytkownika
+                selected_rental = None
+                for rental in rented_vehs:
+                    if rental.vehicle_id == vehicle.id and rental.user_id == vehicle.borrower_id:
+                        selected_rental = rental
+                        break
+
+                if selected_rental is None:
+                    print("Nie znaleziono rezerwacji odpowiadającej wybranemu pojazdowi.")
+                    return
+
+                total_cost, overdue_fee_text = recalculate_cost(
+                    session, user, vehicle, actual_return_date_input, selected_rental.reservation_id
+                )
+
+                print(
+                    f"\n💸 — KKW (Rzeczywisty Koszt Wynajmu) wynosi: {total_cost} zł.{overdue_fee_text}"
+                )
+                print(
+                    f"\nCzy na pewno chcesz zwrócić pojazd: "
+                    f"\n{vehicle}"
+                )
+                choice = input(
+                    f"Wybierz (tak/nie): "
+                ).strip().lower()
+
+                while True:
+                    if choice in ("nie", "n", "no"):
+                        print("\nZwrot pojazdu anulowany.")
+                        return
+
+                    elif choice in ("tak", "t", "yes", "y"):
+                        update_database(session, vehicle, actual_return_date_input, total_cost, selected_rental.reservation_id)
+
+                    print(
+                        f"\nPojazd {vehicle} został pomyślnie zwrócony."
+                        f"\nKoszty rozliczone."
+                        f"\nTranzakcja zakończona"
+                    )
+        return True
+
+def repair_vehicle(user):
     with SessionLocal() as session:
         available_vehicles = get_available_vehicles(session)
         if not available_vehicles:
