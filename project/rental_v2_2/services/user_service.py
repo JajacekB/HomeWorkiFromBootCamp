@@ -6,10 +6,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_, not_
 from models.user import User
 from models.vehicle import Vehicle
+from services.utils import get_positive_int
 from validation.input_validation import get_valid_phone, get_valid_email, prompt_update_with_validation
 from validation.password_validation import is_valid_password_format, validate_and_change_password
 from validation.validation import is_valid_phone, is_valid_email
-
+from utils.iput_helpers import choice_menu, yes_or_not_menu, get_date_from_user
 
 
 def register_user(session, role="client", auto=False):
@@ -75,17 +76,15 @@ def register_user(session, role="client", auto=False):
 
 def update_profile(session, user: User):
     while True:
-        print(
-            f"\n=== AKTUALIZACJA PROFILU UŻYTKOWNIKA ==="
+        question = {
+            "1": "Dane osobowe (imę, nazwisko, telefon, email, adres zamiszkania)",
+            "2": "Hasło",
+            "3": "Wyjdź bez zmian"
+        }
+        choice = choice_menu(f"\n=== AKTUALIZACJA PROFILU UŻYTKOWNIKA ==="
             f"\nZalogowany jako: {user.first_name} {user.last_name} ({user.login})"
-            f"\nCo chcesz zmienić?"
-            f"\n1. Dane osobowe (imę, nazwisko, telefon, email, adres zamiszkania)"
-            f"\n2. Hasło"
-            f"\n3. Wyjdź bez zmian"
+            f"\nCo chcesz zmienić?", question
         )
-
-        choice = input("\nWybierz opcję (1 -3)").strip()
-
         if choice == "1":
             db_user = session.query(User).filter(User.id == user.id).first()
             if not db_user:
@@ -104,7 +103,7 @@ def update_profile(session, user: User):
             new_email = prompt_update_with_validation("Email", db_user.email, is_valid_email)
             new_address = prompt_update("Adres:", db_user.address).strip()
 
-            print(
+            contfirm = yes_or_not_menu(
                 f"\nNowe dane użytkownkia:"
                 f"\nImię: {new_first_name}"
                 f"\nNazwisko: {new_last_name}"
@@ -113,8 +112,7 @@ def update_profile(session, user: User):
                 f"\nAdres: {new_address}"
             )
 
-            contfirm = input("\nCzy zapisać zmiany? (tak/nie): ").strip().lower()
-            if contfirm in ("tak", "t", "yes", "y"):
+            if contfirm:
                 db_user.first_name = new_first_name
                 db_user.last_name = new_last_name
                 db_user.phone = new_phone
@@ -123,11 +121,10 @@ def update_profile(session, user: User):
                 try:
                     session.commit()
                     print("✅ Dane zostały zaktualizowane.")
-                    user.first_name = new_first_name
-                    user.last_name = new_last_name
-                    user.phone = new_phone
-                    user.email = new_email
-                    user.address = new_address
+                    # aktualizacja zalogowanego usera
+                    for attr in ["first_name", "last_name", "phone", "email", "address"]:
+                        setattr(user, attr, getattr(db_user, attr))
+
                 except IntegrityError:
                     session.rollback()
                     print("❌ Podany email lub telefon jest już zajęty przez innego użytkownika.")
@@ -174,7 +171,6 @@ def remove_user(session, role="client"):
             if user_input.lower() in ("anuluj", "a", "no", "n", "exit", "e", "out", "o"):
                 return
 
-
             user_id = int(user_input) if user_input.isdigit() else -1
             query = session.query(User).filter(
                 or_(
@@ -195,37 +191,36 @@ def remove_user(session, role="client"):
                 if active_rentals > 0:
                     print(f"\n🚫 Nie można usunąć użytkownika {query.login}, ponieważ ma aktywne wypożyczenie.")
                 else:
-                    confirm = input(f"\n✅ Znaleziono użytkownika: \n{query}\n"
-                                    f"Czy chcesz go usunąć? (TAK/NIE)? ").strip().lower()
-                    if confirm in ("tak", "t", "yes", "y"):
+                    print(f"\n✅ Znaleziono użytkownika: \n{query}\n")
+                    confirm = yes_or_not_menu(f"Czy chcesz go usunąć?")
+
+                    if confirm:
                         session.delete(query)
                         session.commit()
                         print(f"\n✅ Użytkownik {query.login} został usunięty z bazy.")
                     else:
                         print("\n❌ Anulowano usunięcie użytkownika.")
 
-        # Pytanie o kolejne usunięcie
-        while True:
-            again = input("\nCzy chcesz usunąć kolejnego użytkownika? (TAK/NIE): ").strip().lower()
-            if again in ("tak", "t", "yes", "y"):
-                break  # wraca do początku głównej pętli
-            elif again in ("nie", "n", "no"):
-                print("🔙 Powrót do menu.")
-                return
-            else:
-                print("❌ Niepoprawna odpowiedź. Wpisz 'tak' lub 'nie'.")
+            # Pytanie o kolejne usunięcie
+            again = yes_or_not_menu("\nCzy chcesz usunąć kolejnego użytkownika?")
+            if again:
+                break
+
+        print("🔙 Powrót do menu.")
+        return
+
 
 
 def get_clients(session):
     print(">>> Przeglądanie klientów <<<")
-    client_status = input(
-        "\nW jaki sposób chcesz przeglądać klientów?"
-        "\n(A) - wszyscy"
-        "\n(T) - tylko z wypożyczeniem"
-        "\n(N) - tylko bez wypożyczenia"
-        "\n\nTwój wybór: "
-    ).strip().lower()
-    if client_status in ("a", "wszyscy"):
+    question = {
+        "W": "Wszyscy",
+        "T": "Tylko z wypożyczeniem",
+        "B": "Bez wypożyczenia"
+    }
+    client_status = choice_menu("\nW jaki sposób chcesz przeglądać klientów?", question)
+
+    if client_status == "w":
         clients = (
             session.query(User)
             .filter(User.role == "client")
@@ -239,7 +234,7 @@ def get_clients(session):
         for client in clients:
             print(client, "\n")
 
-    elif client_status in ("t", "tak", "z", "z wypożyczeniem","w"):
+    elif client_status == "t":
         borrower_ids = (
             session.query(Vehicle.borrower_id)
             .filter(Vehicle.is_available == False, Vehicle.borrower_id != None)
@@ -259,35 +254,28 @@ def get_clients(session):
         print("\n\n>>> KLIENCI Z WYPOŻYCZENIEM <<<\n")
         for client in clients:
             print(client, "\n")
-        while True:
-            choice = input(
-                f"\nCo chcesz teraz zrobić:"
-                f"\n(P) - Powrót do menu główneg"
-                f"\n(W) - Wyświetl szczegóły użytkownika"
-                f"\n\nTwój wybór: "
-            ).strip().lower()
-            if choice not in ["p", "powrót", "w", "wyświetl"]:
-                print("\nZły wybór, spróbuj jeszcze raz.")
-                continue
-            if choice in ["p", "powrót"]:
+
+        question = {
+            "W": "Wyświetl szczegóły użytkownika",
+            "P": "Powrót do menu główneg"
+        }
+        choice = choice_menu(f"\nCo chcesz teraz zrobić?")
+
+        if choice == "p":
+            return
+        if choice == "w":
+
+            user_id_input = get_positive_int("\nPodaj ID klient: ")
+
+            client = session.query(User).filter(User.id == user_id_input).first()
+            if not clients:
+                print("❌ Nie znaleziono użytkownika o podanym ID.")
                 return
-            if choice in ["w", "wyświetl"]:
-                while True:
-                    user_input = input("\nPodaj ID klient: ").strip()
-                    try:
-                        id_input = int(user_input)
-                        break  # poprawna liczba, wychodzimy z pętli
-                    except ValueError:
-                        print("❌ Podaj poprawny numer ID (liczbę całkowitą).")
-                client = session.query(User).filter(User.id == id_input).first()
-                if not clients:
-                    print("❌ Nie znaleziono użytkownika o podanym ID.")
-                    return
-                vehicles = session.query(Vehicle).filter(Vehicle.borrower_id == id_input).all()
-                print("\n", client, ":")
-                for vehicle in vehicles:
-                    print("\n      ", vehicle)
-    elif client_status in ("n", "nie", "bez", "bez wypożyczenia"):
+            vehicles = session.query(Vehicle).filter(Vehicle.borrower_id == user_id_input).all()
+            print("\n", client, ":")
+            for vehicle in vehicles:
+                print("\n      ", vehicle)
+    elif client_status in "B":
         borrowed_ids = (
             session.query(Vehicle.borrower_id)
             .filter(Vehicle.is_available == False, Vehicle.borrower_id != None)

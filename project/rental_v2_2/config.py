@@ -8,4 +8,4 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATABASE_PATH = os.path.join(BASE_DIR, "fleet.db")
 DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
 
-DEBUG = os.getenv("DEBUG") == "True"
+DEBUG = os.getenv("DEBUG") == "False"

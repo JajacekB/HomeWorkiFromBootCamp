@@ -1,7 +1,6 @@
 
 
 from datetime import datetime, date, timedelta
-from database.base import Session
 from models.vehicle import Vehicle
 from models.rental_history import RentalHistory
 from models.repair_history import RepairHistory
@@ -13,8 +12,6 @@ from services.rental_process import recalculate_cost
 from services.rental_swap import find_replacement_vehicle, update_database_after_vehicle_swap
 from services.user_service import get_users_by_role
 from services.id_generators import generate_repair_id
-
-
 
 
 def repair_vehicle(session):
@@ -86,7 +83,7 @@ def repair_vehicle(session):
     # jeśli pojazd został uszkodzony podczas najmu uruchomienie procedury wymiany pojazdu i rekalkulacji kosztów
     process_vehicle_swap_and_recalculate(session, broken_veh, broken_rent, repair_days)
 
-    exit() # po zaimplementowaniu retur True
+    return True
 
 
 def process_vehicle_swap_and_recalculate(session, broken_veh, broken_rental, repair_days):
@@ -195,7 +192,7 @@ def mark_as_under_repair(session, vehicle, repair_days):
 
     description = input("\nKrótko opisz zakres naprawy: ")
 
-    repair_id = generate_repair_id()
+    repair_id = generate_repair_id(session)
 
     # Generowanie naprawy
     repair = RepairHistory(

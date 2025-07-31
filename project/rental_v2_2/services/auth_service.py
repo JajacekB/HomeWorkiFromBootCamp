@@ -2,7 +2,6 @@
 # file: auth_service.py
 
 import bcrypt
-from database.base import Session
 from models.user import User
 from services.user_service import register_user
 
@@ -34,7 +33,7 @@ def login_user(session):
         if choice == "1":
             continue
         elif choice == "2":
-            return register_user()
+            return register_user(session)
         else:
             print("\nAnulowano logowanie.")
             return None

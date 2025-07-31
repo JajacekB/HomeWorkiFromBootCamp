@@ -21,7 +21,7 @@ def main():
 
             with SessionLocal() as session:
                 if user.role in ("seller", "admin"):
-                    check_overdue_vehicles(user, session)
+                    check_overdue_vehicles(session, user)
 
                 menus = {
                     "client": menu_client,

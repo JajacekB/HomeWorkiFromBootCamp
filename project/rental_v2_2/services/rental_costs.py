@@ -41,6 +41,7 @@ def calculate_rental_cost(user, daily_rate, rental_days):
             "lojalność" if loyalty_discount_days else (
             "czasowy" if discount > 0 else "brak"))
 
+
 def recalculate_cost(session, user: User, vehicle: Vehicle, return_date: date, reservation_id: str):
     # Rozdzielenie przypadków; przed czasem, aktualny, przeterminowany
 
@@ -59,7 +60,7 @@ def recalculate_cost(session, user: User, vehicle: Vehicle, return_date: date, r
 
     if return_date < start_date:
         total_cost = cash_per_day
-        overdue_fee_text = f"(Anulowanie rezerwacji – kara {cash_per_day} zł)"
+        overdue_fee_text = f"(Skrócenie rezerwacji – kara {cash_per_day} zł)"
     if return_date > planned_return_date:
         extra_days = (return_date - planned_return_date).days
         extra_fee = extra_days * cash_per_day

@@ -9,6 +9,7 @@ from models.vehicle import Bike, Car, Scooter
 
 
 def get_unavailable_vehicle(session, start_date = None, planned_return_date = None, vehicle_type = "all"):
+
     if start_date is None or planned_return_date is None:
         start_date = planned_return_date = date.today()
 
@@ -20,7 +21,7 @@ def get_unavailable_vehicle(session, start_date = None, planned_return_date = No
     potentially_unavailable = query.all()
 
     if not potentially_unavailable:
-        return []
+        return [], []
 
     candidate_ids = [v.id for v in potentially_unavailable]
 
@@ -30,7 +31,6 @@ def get_unavailable_vehicle(session, start_date = None, planned_return_date = No
         RentalHistory.planned_return_date >= start_date
     ).all()
     rented_ids = [r.vehicle_id for r in rented_vehicles]
-
 
     repaired_today = session.query(RepairHistory).filter(
         RepairHistory.vehicle_id.in_(candidate_ids),

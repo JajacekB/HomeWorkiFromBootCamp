@@ -7,7 +7,7 @@ from services.vehicle_avability import get_available_vehicles
 from services.rental_costs import calculate_rental_cost
 
 def update_database_after_vehicle_swap(
-        session, original_vehicle, replacement_vehicle, broken_rental, diffrent_price: bool):
+        session, original_vehicle, replacement_vehicle, broken_rental, different_price: bool):
     # liczymy koszt za dotychczasowy najem
     today = date.today()
 
@@ -17,17 +17,17 @@ def update_database_after_vehicle_swap(
     real_rental_days_new = (broken_rental.planned_return_date - today).days
 
     if real_rental_days_old < 1:
-        real_rental_days_old = 1  # zabezpieczenie przed dzieleniem przez 0 lub dziwnymi datami
+        real_rental_days_old = 1
     if real_rental_days_new < 0:
-        real_rental_days_new = 0  # gdy zwrot tego samego dnia
+        real_rental_days_new = 0
 
     # Oblicz koszt pojazdu zepsutego
     broken_veh_cost = old_rental_cost * real_rental_days_old / old_rental_period
 
     # Oblicz koszt pojazdu zastępczego
-    if diffrent_price:
+    if different_price:
         user = session.query(User).filter(User.id == original_vehicle.user_id).first()
-        replacement_veh_cost = calculate_rental_cost(user, replacement_vehicle.cash_per_day, real_rental_days_new)
+        replacement_veh_cost, _, _ = calculate_rental_cost(user, replacement_vehicle.cash_per_day, real_rental_days_new)
     else:
         replacement_veh_cost = old_rental_cost - broken_veh_cost
 
@@ -45,7 +45,7 @@ def update_database_after_vehicle_swap(
     broken_rental.actual_return_date = today
     broken_rental.total_cost = round(broken_veh_cost, 2)
 
-    # --- 🔁 Nowa rezerwacja dla pojazdu zastępczego ---
+    # Nowa rezerwacja dla pojazdu zastępczego
     base_res_id = broken_rental.reservation_id
     existing = session.query(RentalHistory).filter(
         RentalHistory.reservation_id.like(f"{base_res_id}%")
@@ -53,9 +53,6 @@ def update_database_after_vehicle_swap(
 
     new_suffix = chr(65 + len(existing))  # 'A', 'B', 'C', ...
     new_res_id = f"{base_res_id}{new_suffix}"
-
-    broken_rental.actual_return_date = today
-    broken_rental.total_cost = round(broken_veh_cost, 2)
 
     new_rental = RentalHistory(
         reservation_id=new_res_id,
